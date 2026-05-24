@@ -1,0 +1,562 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IdentityMode {
+  VERIFIED
+  ANONYMOUS
+}
+
+enum CommunityType {
+  COLLEGE
+  OFFICE
+  STARTUP
+  EVENT
+  CONFERENCE
+  HOSTEL
+  CAFETERIA
+  CLASSROOM
+  CUSTOM
+}
+
+enum PostType {
+  TEXT
+  IMAGE
+  VIDEO
+  POLL
+  AUDIO
+  ALERT
+  CHECKIN
+  REPOST
+}
+
+enum Visibility {
+  COMMUNITY
+  GEO_NEARBY
+  FOLLOWERS
+  PRIVATE
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  FLAGGED
+  REMOVED
+  SHADOWED
+}
+
+enum TrustAction {
+  CONFIRM
+  DENY
+  PARTIAL
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum MatchStatus {
+  PENDING
+  MUTUAL
+  REVEALED
+  BLOCKED
+  EXPIRED
+}
+
+enum Role {
+  USER
+  MODERATOR
+  ADMIN
+}
+
+model User {
+  id                String             @id @default(cuid())
+  clerkUserId       String             @unique
+  email             String             @unique
+  name              String?
+  avatarUrl         String?
+  role              Role               @default(USER)
+  collegeName       String?
+  companyName       String?
+  verifiedCollege   Boolean            @default(false)
+  verifiedCompany   Boolean            @default(false)
+  reputationScore   Int                @default(0)
+  trustScore        Int                @default(50)
+  shadowBanned      Boolean            @default(false)
+  isActive          Boolean            @default(true)
+  lastSeenAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  anonymousProfiles AnonymousIdentity[]
+  posts             Post[]
+  comments          Comment[]
+  stories           Story[]
+  polls             Poll[]
+  votes             Vote[]
+  placements        Placement[]
+  alerts            Alert[]
+  matchesInitiated   Match[]           @relation("match_initiator")
+  matchesReceived    Match[]           @relation("match_target")
+  notifications     Notification[]
+  memberships       CommunityMember[]
+  presence          Presence?
+  deviceSessions    DeviceSession[]
+  trustSignals      TrustSignal[]
+  reports           Report[]           @relation("reporter")
+  blocks            Block[]            @relation("blocker")
+}
+
+model AnonymousIdentity {
+  id                String             @id @default(cuid())
+  userId            String
+  alias             String
+  persona           String
+  avatarSeed        String?
+  karma             Int                @default(0)
+  trustScore        Int                @default(50)
+  badgeLevel        Int                @default(1)
+  abuseScore        Int                @default(0)
+  isSuspended       Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  posts             Post[]
+  comments          Comment[]
+  stories           Story[]
+  polls             Poll[]
+  votes             Vote[]
+  placements        Placement[]
+
+  @@unique([userId, alias])
+}
+
+model Community {
+  id                String             @id @default(cuid())
+  slug              String             @unique
+  name              String
+  type              CommunityType
+  description       String?
+  imageUrl          String?
+  parentCommunityId String?
+  isPrivate         Boolean            @default(false)
+  isVerified        Boolean            @default(false)
+  memberCount       Int                @default(0)
+  onlineCount       Int                @default(0)
+  trendingScore     Float              @default(0)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  parentCommunity   Community?         @relation("community_tree", fields: [parentCommunityId], references: [id])
+  childCommunities  Community[]        @relation("community_tree")
+  geofences         Geofence[]
+  members           CommunityMember[]
+  posts             Post[]
+  polls             Poll[]
+  stories           Story[]
+  placements        Placement[]
+  alerts            Alert[]
+  rankings          CommunityRanking[]
+  events            Event[]
+  reports           Report[]
+  mediaAttachments  MediaAttachment[]
+}
+
+model CommunityMember {
+  id                String             @id @default(cuid())
+  userId            String
+  communityId       String
+  joinedAt          DateTime           @default(now())
+  muted             Boolean            @default(false)
+  role              Role               @default(USER)
+  notificationsOn   Boolean            @default(true)
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, communityId])
+}
+
+model Geofence {
+  id                String             @id @default(cuid())
+  communityId       String
+  label             String
+  lat               Float
+  lng               Float
+  radiusMeters      Int
+  kind              String
+  isActive          Boolean            @default(true)
+  privacyMode       String             @default("HASHED")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@index([lat, lng])
+}
+
+model Post {
+  id                String             @id @default(cuid())
+  authorUserId      String
+  anonymousIdentityId String?
+  communityId       String
+  parentPostId      String?
+  type              PostType           @default(TEXT)
+  visibility        Visibility         @default(COMMUNITY)
+  title             String?
+  body              String?
+  mediaUrl          String?
+  mediaType         String?
+  locationLabel     String?
+  trustScore        Int                @default(0)
+  upvotes           Int                @default(0)
+  downvotes         Int                @default(0)
+  commentCount      Int                @default(0)
+  shareCount        Int                @default(0)
+  repostCount       Int                @default(0)
+  moderationStatus  ModerationStatus   @default(PENDING)
+  isAnonymous       Boolean            @default(false)
+  isPinned          Boolean            @default(false)
+  isLocked          Boolean            @default(false)
+  expiresAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  author            User               @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+  anonymousIdentity AnonymousIdentity? @relation(fields: [anonymousIdentityId], references: [id], onDelete: SetNull)
+  community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  parentPost        Post?              @relation("post_thread", fields: [parentPostId], references: [id])
+  childPosts        Post[]             @relation("post_thread")
+  comments          Comment[]
+  votes             Vote[]
+  mediaAttachments  MediaAttachment[]
+  storySource       Story?
+  moderationLogs    ModerationLog[]
+  trustSignals      TrustSignal[]
+  notifications     Notification[]
+  reports           Report[]
+}
+
+model Comment {
+  id                String             @id @default(cuid())
+  postId            String
+  authorUserId      String
+  anonymousIdentityId String?
+  parentCommentId   String?
+  body              String
+  upvotes           Int                @default(0)
+  downvotes         Int                @default(0)
+  moderationStatus  ModerationStatus   @default(PENDING)
+  isAnonymous       Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  post              Post               @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author            User               @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+  anonymousIdentity AnonymousIdentity? @relation(fields: [anonymousIdentityId], references: [id], onDelete: SetNull)
+  parentComment     Comment?           @relation("comment_tree", fields: [parentCommentId], references: [id])
+  childComments     Comment[]           @relation("comment_tree")
+  votes             Vote[]
+  reports           Report[]
+}
+
+model Story {
+  id                String             @id @default(cuid())
+  authorUserId      String
+  anonymousIdentityId String?
+  communityId       String
+  mediaUrl          String
+  thumbnailUrl      String?
+  caption           String?
+  isAnonymous       Boolean            @default(false)
+  expiresAt         DateTime
+  viewerCount       Int                @default(0)
+  reactionCount     Int                @default(0)
+  moderationStatus  ModerationStatus   @default(PENDING)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  author            User               @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+  anonymousIdentity AnonymousIdentity? @relation(fields: [anonymousIdentityId], references: [id], onDelete: SetNull)
+  community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+}
+
+model Poll {
+  id                String             @id @default(cuid())
+  authorUserId      String
+  anonymousIdentityId String?
+  communityId       String
+  question          String
+  isAnonymous       Boolean            @default(false)
+  closesAt          DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  author            User               @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+  anonymousIdentity AnonymousIdentity? @relation(fields: [anonymousIdentityId], references: [id], onDelete: SetNull)
+  community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  options           PollOption[]
+  votes             Vote[]
+  reports           Report[]
+}
+
+model PollOption {
+  id                String             @id @default(cuid())
+  pollId            String
+  text              String
+  voteCount         Int                @default(0)
+
+  poll              Poll               @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes             Vote[]
+}
+
+model Placement {
+  id                String             @id @default(cuid())
+  authorUserId      String
+  anonymousIdentityId String?
+  communityId       String
+  company           String
+  role              String
+  packageLpa        Float?
+  college           String?
+  year              Int?
+  difficulty        Int?
+  oaQuestions       String?
+  interviewRound    String?
+  hrQuestions       String?
+  salaryBreakdown    String?
+  rejectionReason   String?
+  resumeTips        String?
+  isAnonymous       Boolean            @default(true)
+  authenticityScore Int                @default(50)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  author            User               @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+  anonymousIdentity AnonymousIdentity? @relation(fields: [anonymousIdentityId], references: [id], onDelete: SetNull)
+  community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  votes             Vote[]
+  reports           Report[]
+}
+
+model Vote {
+  id                String             @id @default(cuid())
+  userId            String
+  anonymousIdentityId String?
+  postId            String?
+  commentId         String?
+  pollId            String?
+  pollOptionId      String?
+  placementId       String?
+  value             Int
+  trustAction       TrustAction?
+  createdAt         DateTime           @default(now())
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  anonymousIdentity AnonymousIdentity? @relation(fields: [anonymousIdentityId], references: [id], onDelete: SetNull)
+
+  @@index([postId])
+  @@index([commentId])
+  @@index([pollId])
+  @@index([placementId])
+}
+
+model TrustSignal {
+  id                String             @id @default(cuid())
+  postId            String
+  userId            String
+  action            TrustAction
+  weight            Int                @default(1)
+  createdAt         DateTime           @default(now())
+
+  post              Post               @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId, action])
+}
+
+model Alert {
+  id                String             @id @default(cuid())
+  communityId       String
+  reporterUserId    String
+  anonymousIdentityId String?
+  title             String
+  description       String
+  severity          AlertSeverity
+  locationLabel     String?
+  lat               Float?
+  lng               Float?
+  moderationStatus  ModerationStatus   @default(PENDING)
+  escalatedToAdmin  Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  reporter          User               @relation(fields: [reporterUserId], references: [id], onDelete: Cascade)
+  anonymousIdentity AnonymousIdentity? @relation(fields: [anonymousIdentityId], references: [id], onDelete: SetNull)
+}
+
+model Match {
+  id                String             @id @default(cuid())
+  initiatorUserId   String
+  targetUserId      String
+  initiatorAnonHash String?
+  targetAnonHash    String?
+  status            MatchStatus       @default(PENDING)
+  revealedAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  initiator         User               @relation("match_initiator", fields: [initiatorUserId], references: [id], onDelete: Cascade)
+  target            User               @relation("match_target", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@unique([initiatorUserId, targetUserId])
+}
+
+model Notification {
+  id                String             @id @default(cuid())
+  userId            String
+  type              String
+  title             String
+  body              String
+  isRead            Boolean            @default(false)
+  payload           Json?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Presence {
+  id                String             @id @default(cuid())
+  userId            String             @unique
+  status            String
+  communityId       String?
+  typingInThreadId  String?
+  lastPingAt        DateTime
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DeviceSession {
+  id                String             @id @default(cuid())
+  userId            String
+  deviceId          String
+  deviceName        String?
+  platform          String?
+  browser           String?
+  ipAddress         String?
+  userAgent         String?
+  isActive          Boolean            @default(true)
+  lastSeenAt        DateTime           @default(now())
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
+}
+
+model MediaAttachment {
+  id                String             @id @default(cuid())
+  postId            String?
+  storyId           String?
+  placementId       String?
+  communityId       String?
+  url               String
+  fileName          String
+  fileType          String
+  fileSize          Int
+  storageProvider   String             @default("s3")
+  purpose           String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  post              Post?              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  story             Story?             @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  placement         Placement?         @relation(fields: [placementId], references: [id], onDelete: Cascade)
+  community         Community?          @relation(fields: [communityId], references: [id], onDelete: SetNull)
+}
+
+model ModerationLog {
+  id                String             @id @default(cuid())
+  postId            String
+  model             String
+  score             Int
+  verdict           String
+  reason            String?
+  createdAt         DateTime           @default(now())
+
+  post              Post               @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model CommunityRanking {
+  id                String             @id @default(cuid())
+  communityId       String
+  date              DateTime
+  score             Float
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+}
+
+model Event {
+  id                String             @id @default(cuid())
+  communityId       String
+  name              String
+  description       String?
+  startsAt          DateTime
+  endsAt            DateTime?
+  locationLabel     String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+}
+
+model Report {
+  id                String             @id @default(cuid())
+  reporterId        String
+  targetType        String
+  targetId          String
+  reason            String
+  details           String?
+  status            String            @default("OPEN")
+  notes             String?
+  reviewedById      String?
+  reviewedAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  reporter          User               @relation("reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetUser        User?              @relation("report_target_user", fields: [targetId], references: [id], onDelete: SetNull)
+  post              Post?              @relation(fields: [targetId], references: [id], onDelete: SetNull)
+  comment           Comment?           @relation(fields: [targetId], references: [id], onDelete: SetNull)
+  alert             Alert?             @relation(fields: [targetId], references: [id], onDelete: SetNull)
+}
+
+model Block {
+  id                String             @id @default(cuid())
+  blockerId         String
+  blockedId         String
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  blocker           User               @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked           User               @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+}
