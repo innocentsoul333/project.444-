@@ -1,10 +1,29 @@
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+
 export default function SettingsPage() {
   return (
     <main className="space-y-4">
-      <h2 className="text-2xl font-semibold">Settings</h2>
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        Privacy, location controls, notification settings, and moderation preferences.
-      </div>
+      <header className="glass-card">
+        <h2 className="page-title">Settings</h2>
+        <p className="page-subtitle mt-2">
+          Privacy, location controls, notification preferences, and moderation options.
+        </p>
+      </header>
+      <section className="glass-card space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm text-zinc-100">Display Name</label>
+          <Input placeholder="Your display name" />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm text-zinc-100">Campus / Community</label>
+          <Input placeholder="e.g. BITS Pilani" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button>Save Changes</Button>
+          <Button variant="outline">Privacy Controls</Button>
+        </div>
+      </section>
     </main>
   );
 }
