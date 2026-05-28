@@ -112,7 +112,10 @@ model User {
   deviceSessions    DeviceSession[]
   trustSignals      TrustSignal[]
   reports           Report[]           @relation("reporter")
+  reportsTargeted   Report[]           @relation("report_target_user")
+  reviewedReports   Report[]           @relation("report_reviewer")
   blocks            Block[]            @relation("blocker")
+  blockedBy         Block[]            @relation("blocked")
 }
 
 model AnonymousIdentity {
@@ -136,6 +139,7 @@ model AnonymousIdentity {
   polls             Poll[]
   votes             Vote[]
   placements        Placement[]
+  alerts            Alert[]
 
   @@unique([userId, alias])
 }
@@ -167,7 +171,7 @@ model Community {
   alerts            Alert[]
   rankings          CommunityRanking[]
   events            Event[]
-  reports           Report[]
+  reports           Report[]           @relation("report_community")
   mediaAttachments  MediaAttachment[]
 }
 
@@ -239,11 +243,11 @@ model Post {
   comments          Comment[]
   votes             Vote[]
   mediaAttachments  MediaAttachment[]
-  storySource       Story?
+  storySource       Story?             @relation("post_story_source")
   moderationLogs    ModerationLog[]
   trustSignals      TrustSignal[]
   notifications     Notification[]
-  reports           Report[]
+  reports           Report[]           @relation("report_post")
 }
 
 model Comment {
@@ -266,7 +270,7 @@ model Comment {
   parentComment     Comment?           @relation("comment_tree", fields: [parentCommentId], references: [id])
   childComments     Comment[]           @relation("comment_tree")
   votes             Vote[]
-  reports           Report[]
+  reports           Report[]           @relation("report_comment")
 }
 
 model Story {
@@ -288,6 +292,9 @@ model Story {
   author            User               @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
   anonymousIdentity AnonymousIdentity? @relation(fields: [anonymousIdentityId], references: [id], onDelete: SetNull)
   community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  sourcePostId      String?            @unique
+  sourcePost        Post?              @relation("post_story_source", fields: [sourcePostId], references: [id], onDelete: SetNull)
+  mediaAttachments  MediaAttachment[]
 }
 
 model Poll {
@@ -306,7 +313,7 @@ model Poll {
   community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
   options           PollOption[]
   votes             Vote[]
-  reports           Report[]
+  reports           Report[]           @relation("report_poll")
 }
 
 model PollOption {
@@ -345,7 +352,8 @@ model Placement {
   anonymousIdentity AnonymousIdentity? @relation(fields: [anonymousIdentityId], references: [id], onDelete: SetNull)
   community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
   votes             Vote[]
-  reports           Report[]
+  reports           Report[]           @relation("report_placement")
+  mediaAttachments  MediaAttachment[]
 }
 
 model Vote {
@@ -363,6 +371,11 @@ model Vote {
 
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   anonymousIdentity AnonymousIdentity? @relation(fields: [anonymousIdentityId], references: [id], onDelete: SetNull)
+  post              Post?              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment           Comment?           @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  poll              Poll?              @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  pollOption        PollOption?        @relation(fields: [pollOptionId], references: [id], onDelete: Cascade)
+  placement         Placement?         @relation(fields: [placementId], references: [id], onDelete: Cascade)
 
   @@index([postId])
   @@index([commentId])
@@ -403,6 +416,7 @@ model Alert {
   community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
   reporter          User               @relation(fields: [reporterUserId], references: [id], onDelete: Cascade)
   anonymousIdentity AnonymousIdentity? @relation(fields: [anonymousIdentityId], references: [id], onDelete: SetNull)
+  reports           Report[]           @relation("report_alert")
 }
 
 model Match {
@@ -430,10 +444,12 @@ model Notification {
   body              String
   isRead            Boolean            @default(false)
   payload           Json?
+  postId            String?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post              Post?              @relation(fields: [postId], references: [id], onDelete: SetNull)
 }
 
 model Presence {
@@ -530,7 +546,14 @@ model Report {
   id                String             @id @default(cuid())
   reporterId        String
   targetType        String
-  targetId          String
+  targetId          String?
+  targetUserId      String?
+  postId            String?
+  commentId         String?
+  alertId           String?
+  pollId            String?
+  placementId       String?
+  communityId       String?
   reason            String
   details           String?
   status            String            @default("OPEN")
@@ -541,10 +564,14 @@ model Report {
   updatedAt         DateTime           @updatedAt
 
   reporter          User               @relation("reporter", fields: [reporterId], references: [id], onDelete: Cascade)
-  targetUser        User?              @relation("report_target_user", fields: [targetId], references: [id], onDelete: SetNull)
-  post              Post?              @relation(fields: [targetId], references: [id], onDelete: SetNull)
-  comment           Comment?           @relation(fields: [targetId], references: [id], onDelete: SetNull)
-  alert             Alert?             @relation(fields: [targetId], references: [id], onDelete: SetNull)
+  reviewedBy        User?              @relation("report_reviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  targetUser        User?              @relation("report_target_user", fields: [targetUserId], references: [id], onDelete: SetNull)
+  post              Post?              @relation("report_post", fields: [postId], references: [id], onDelete: SetNull)
+  comment           Comment?           @relation("report_comment", fields: [commentId], references: [id], onDelete: SetNull)
+  alert             Alert?             @relation("report_alert", fields: [alertId], references: [id], onDelete: SetNull)
+  poll              Poll?              @relation("report_poll", fields: [pollId], references: [id], onDelete: SetNull)
+  placement         Placement?         @relation("report_placement", fields: [placementId], references: [id], onDelete: SetNull)
+  community         Community?         @relation("report_community", fields: [communityId], references: [id], onDelete: SetNull)
 }
 
 model Block {

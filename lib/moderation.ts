@@ -1,9 +1,15 @@
 // lib/moderation.ts
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+function getClient(): OpenAI | null {
+  if (!process.env.OPENAI_API_KEY) {
+    return null;
+  }
+
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
 
 export type ModerationResult = {
   approved: boolean;
@@ -14,6 +20,18 @@ export type ModerationResult = {
 };
 
 export async function moderateText(input: string): Promise<ModerationResult> {
+  const client = getClient();
+
+  if (!client) {
+    return {
+      approved: true,
+      flagged: false,
+      categories: {},
+      categoryScores: {},
+      raw: { skipped: true, reason: "OPENAI_API_KEY is not set" },
+    };
+  }
+
   if (!input.trim()) {
     return {
       approved: true,
@@ -41,6 +59,18 @@ export async function moderateText(input: string): Promise<ModerationResult> {
 }
 
 export async function moderateImage(imageUrl: string): Promise<ModerationResult> {
+  const client = getClient();
+
+  if (!client) {
+    return {
+      approved: true,
+      flagged: false,
+      categories: {},
+      categoryScores: {},
+      raw: { skipped: true, reason: "OPENAI_API_KEY is not set" },
+    };
+  }
+
   const result = await client.moderations.create({
     model: "omni-moderation-latest",
     input: [

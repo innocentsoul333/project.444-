@@ -11,6 +11,16 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const hasClerk = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
+  if (!hasClerk) {
+    return (
+      <html lang="en">
+        <body>{children}</body>
+      </html>
+    );
+  }
+
   return (
     <ClerkProvider>
       <html lang="en">

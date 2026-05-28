@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { buildLegacyBackfillPatch } from "@/lib/report-targets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export async function GET(req: Request) {
     const limit = Math.min(Number(searchParams.get("limit") ?? 50), 100);
     const cursor = searchParams.get("cursor");
 
-    const items = await prisma.report.findMany({
+    let items = await prisma.report.findMany({
       where: {
         ...(status ? { status } : {}),
         ...(type ? { targetType: type } : {}),
@@ -42,12 +43,52 @@ export async function GET(req: Request) {
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
       include: {
         reporter: true,
+        reviewedBy: true,
         targetUser: true,
         post: true,
         comment: true,
         alert: true,
+        poll: true,
+        placement: true,
+        community: true,
       },
     });
+
+    const stale = items
+      .map((item) => ({ id: item.id, patch: buildLegacyBackfillPatch(item) }))
+      .filter((item) => Boolean(item.patch));
+
+    if (stale.length > 0) {
+      await Promise.all(
+        stale.map((item) =>
+          prisma.report.update({
+            where: { id: item.id },
+            data: item.patch!,
+          })
+        )
+      );
+
+      items = await prisma.report.findMany({
+        where: {
+          ...(status ? { status } : {}),
+          ...(type ? { targetType: type } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        include: {
+          reporter: true,
+          reviewedBy: true,
+          targetUser: true,
+          post: true,
+          comment: true,
+          alert: true,
+          poll: true,
+          placement: true,
+          community: true,
+        },
+      });
+    }
 
     const nextCursor = items.length === limit ? items[items.length - 1]?.id : null;
 
